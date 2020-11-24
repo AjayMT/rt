@@ -2,7 +2,6 @@
 use std::fmt;
 use std::vec::Vec;
 use std::boxed::Box;
-use std::rc::Rc;
 use rand::Rng;
 
 #[derive(Copy, Clone)]
@@ -222,7 +221,7 @@ impl Camera {
 
         Ray {
             origin: self.origin.add(offset),
-            dir: self.lower_left_corner.add(self.horizontal.scale(t))
+            dir: self.lower_left_corner.add(self.horizontal.scale(s))
                 .add(self.vertical.scale(t)).add(self.origin.neg())
                 .add(offset.neg())
         }
@@ -306,27 +305,86 @@ fn ray_color(r: Ray, world: &dyn Hittable, depth: i32) -> Vec3 {
 fn random_scene() -> HittableList {
     let mut rng = rand::thread_rng();
     let mut world = HittableList { objects: Vec::new() };
+
+    let ground: &'static mut dyn Material = Box::leak(Box::new(Lambertian {
+        albedo: Vec3 { x: 0.5, y: 0.5, z: 0.5 }
+    }));
+    world.objects.push(Box::new(Sphere {
+        center: Vec3 { x: 0., y: -1000., z: 0. }, radius: 1000., mat: ground
+    }));
+
     for i in -11..11 {
         for j in -11..11 {
             let choose_mat: f64 = rng.gen();
             let r1: f64 = rng.gen();
             let r2: f64 = rng.gen();
-            let center = Vec3 { x: 0.9 * r1, y: 0.2, z: (j as f64) + 0.9 * r2 };
+            let center = Vec3 {
+                x: (i as f64) + 0.9 * r1, y: 0.2, z: (j as f64) + 0.9 * r2
+            };
 
             if center.add(Vec3 { x: -4., y: -0.2, z: 0. }).length() > 0.9 {
-                // TODO
+                if choose_mat < 0.8 {
+                    let albedo = random_unit_vec3(false)
+                        .pointwise_mult(random_unit_vec3(false));
+                    let mat: &'static mut dyn Material = Box::leak(Box::new(
+                        Lambertian { albedo: albedo }
+                    ));
+                    world.objects.push(
+                        Box::new(Sphere { center: center, radius: 0.2, mat: mat })
+                    );
+                } else if choose_mat < 0.95 {
+                    let rx: f64 = rng.gen();
+                    let ry: f64 = rng.gen();
+                    let rz: f64 = rng.gen();
+                    let albedo = Vec3 { x: rx, y: ry, z: rz };
+                    let fuzz: f64 = rng.gen();
+                    let mat: &'static mut dyn Material = Box::leak(Box::new(
+                        Metal { albedo: albedo, fuzz: fuzz * 0.5 }
+                    ));
+                    world.objects.push(
+                        Box::new(Sphere { center: center, radius: 0.2, mat: mat })
+                    );
+                } else {
+                    let mat: &'static mut dyn Material = Box::leak(Box::new(
+                        Dielectric { ir: 1.5 }
+                    ));
+                    world.objects.push(
+                        Box::new(Sphere { center: center, radius: 0.2, mat: mat })
+                    );
+                }
             }
         }
     }
+
+    let mat1: &'static mut dyn Material = Box::leak(Box::new(
+        Dielectric { ir: 1.5 }
+    ));
+    world.objects.push(Box::new(
+        Sphere { center: Vec3 { x: 0., y: 1., z: 0. }, radius: 1., mat: mat1 }
+    ));
+
+    let mat2: &'static mut dyn Material = Box::leak(Box::new(
+        Lambertian { albedo: Vec3 { x: 0.4, y: 0.2, z: 0.1 } }
+    ));
+    world.objects.push(Box::new(
+        Sphere { center: Vec3 { x: -4., y: 1., z: 0. }, radius: 1., mat: mat2 }
+    ));
+
+    let mat3: &'static mut dyn Material = Box::leak(Box::new(
+        Metal { albedo: Vec3 { x: 0.7, y: 0.6, z: 0.5 }, fuzz: 0. }
+    ));
+    world.objects.push(Box::new(
+        Sphere { center: Vec3 { x: 4., y: 1., z: 0. }, radius: 1., mat: mat3 }
+    ));
 
     return world;
 }
 
 fn main() {
     let aspect_ratio = 3.0 / 2.0;
-    let image_width = 1200;
+    let image_width = 400;
     let image_height = ((image_width as f64) / aspect_ratio) as i32;
-    let samples_per_pixel = 500;
+    let samples_per_pixel = 100;
     let max_depth = 50;
 
     let world = random_scene();
